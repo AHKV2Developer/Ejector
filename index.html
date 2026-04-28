@@ -14,6 +14,7 @@
         #syncBtn { 
             width: 100%; max-width: 300px; padding: 20px; font-size: 20px; font-weight: 600;
             border-radius: 8px; border: none; background: #779af2; color: #fff; cursor: pointer; margin-bottom: 10px;
+            touch-action: manipulation;
         }
         #status { font-size: 14px; color: #495057; margin-bottom: 30px; }
         .setting-row { margin-bottom: 25px; width: 100%; max-width: 300px; text-align: center; }
@@ -22,7 +23,6 @@
         .adj-btn { padding: 12px 20px; font-size: 18px; border-radius: 6px; border: none; background: #E9ECEF; color: #212529; cursor: pointer; }
         .val { font-size: 20px; font-weight: 600; min-width: 40px; }
 
-        /* Fake Call Screen */
         #fakeCall { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: #1a1a1a; color: #fff; display: none; z-index: 100; 
@@ -109,23 +109,27 @@
 
         const btn = document.getElementById('syncBtn');
         
-        // Single point of entry for the button
-        btn.addEventListener('touchstart', (e) => {
+        btn.addEventListener('pointerdown', (e) => {
             e.preventDefault();
-            // Acknowledgment vibration
+            // Acknowledge press
             if (navigator.vibrate) navigator.vibrate(vibrationIntensity);
 
             if (state !== "idle") {
                 disarm();
             } else {
-                // Determine Mode (Hold for 800ms = 5s test, Tap = 15s)
-                pressTimer = setTimeout(() => { enterArmedState(5000); }, 800);
+                // Prepare for Long Press (5s test mode)
+                pressTimer = setTimeout(() => {
+                    pressTimer = null; // Clear to prevent double-fire
+                    enterArmedState(5000);
+                }, 800);
             }
         });
 
-        btn.addEventListener('touchend', (e) => {
-            if (state === "idle" && pressTimer) {
+        btn.addEventListener('pointerup', (e) => {
+            if (pressTimer) {
                 clearTimeout(pressTimer);
+                pressTimer = null;
+                // Standard short press (15s production mode)
                 enterArmedState(15000);
             }
         });
@@ -176,9 +180,10 @@
     function triggerEvent(type) {
         if (state !== "armed") return;
         
-        // Sensor trigger acknowledgment vibration
+        // Sensor Trigger Acknowledgment
         if (navigator.vibrate) navigator.vibrate(vibrationIntensity);
         
+        // Disable listeners immediately after a trigger to prevent double fire
         cleanupListeners();
         setStatus("Calling...");
         const seconds = (type === 'rotation') ? rotationSeconds : shakeSeconds;
@@ -199,17 +204,23 @@
 
     function disarm() {
         state = "idle";
-        cleanupListeners();
         
-        // Force reset
+        // Hard Reset everything
+        cleanupListeners();
+        if (timerRef) clearTimeout(timerRef);
+        if (vibrationLoop) clearInterval(vibrationLoop);
+        if (pressTimer) clearTimeout(pressTimer);
+        pressTimer = null;
+        
+        // Reset UI
         document.getElementById('fakeCall').style.display = "none";
         document.getElementById('syncBtn').innerText = "Sync";
         
-        // Clear all feedback
+        // Reset Hardware/Audio
         if (navigator.vibrate) navigator.vibrate(0);
-        if (vibrationLoop) clearInterval(vibrationLoop);
         const r = document.getElementById('ringtone');
-        r.pause(); r.currentTime = 0;
+        r.pause(); 
+        r.currentTime = 0;
         
         setStatus("Idle");
     }
@@ -217,7 +228,6 @@
     function cleanupListeners() {
         window.removeEventListener('devicemotion', handleShake);
         window.removeEventListener('deviceorientation', handleRotation);
-        if (timerRef) clearTimeout(timerRef);
     }
 
     let lastOrientation = null;
