@@ -14,7 +14,6 @@
         #syncBtn { 
             width: 100%; max-width: 300px; padding: 20px; font-size: 20px; font-weight: 600;
             border-radius: 8px; border: none; background: #779af2; color: #fff; cursor: pointer; margin-bottom: 10px;
-            user-select: none; -webkit-user-select: none;
         }
         #status { font-size: 14px; color: #495057; margin-bottom: 30px; }
         .setting-row { margin-bottom: 25px; width: 100%; max-width: 300px; text-align: center; }
@@ -109,14 +108,26 @@
         document.getElementById('vibrationIntensity').innerText = vibrationIntensity;
 
         const btn = document.getElementById('syncBtn');
+        
+        // Single point of entry for the button
         btn.addEventListener('touchstart', (e) => {
-            if (navigator.vibrate) navigator.vibrate(vibrationIntensity); // Input Acknowledgment
-            if (state !== "idle") { disarm(); return; }
-            pressTimer = setTimeout(() => { enterArmedState(5000); }, 800); // Long Press
+            e.preventDefault();
+            // Acknowledgment vibration
+            if (navigator.vibrate) navigator.vibrate(vibrationIntensity);
+
+            if (state !== "idle") {
+                disarm();
+            } else {
+                // Determine Mode (Hold for 800ms = 5s test, Tap = 15s)
+                pressTimer = setTimeout(() => { enterArmedState(5000); }, 800);
+            }
         });
+
         btn.addEventListener('touchend', (e) => {
-            clearTimeout(pressTimer);
-            if (state === "idle") { enterArmedState(15000); } // Short Press
+            if (state === "idle" && pressTimer) {
+                clearTimeout(pressTimer);
+                enterArmedState(15000);
+            }
         });
     };
 
@@ -164,6 +175,10 @@
 
     function triggerEvent(type) {
         if (state !== "armed") return;
+        
+        // Sensor trigger acknowledgment vibration
+        if (navigator.vibrate) navigator.vibrate(vibrationIntensity);
+        
         cleanupListeners();
         setStatus("Calling...");
         const seconds = (type === 'rotation') ? rotationSeconds : shakeSeconds;
@@ -185,10 +200,12 @@
     function disarm() {
         state = "idle";
         cleanupListeners();
+        
+        // Force reset
         document.getElementById('fakeCall').style.display = "none";
         document.getElementById('syncBtn').innerText = "Sync";
         
-        // Clear everything
+        // Clear all feedback
         if (navigator.vibrate) navigator.vibrate(0);
         if (vibrationLoop) clearInterval(vibrationLoop);
         const r = document.getElementById('ringtone');
