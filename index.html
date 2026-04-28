@@ -6,7 +6,8 @@
     <title>Trigger Call App</title>
     <link rel="manifest" href="manifest.json">
     <style>
-        body, html { margin: 0; padding: 0; background: #000; color: #fff; font-family: sans-serif; height: 100%; overflow: hidden; }
+        /* Updated: Allow vertical scrolling so the Arm button isn't cut off */
+        body, html { margin: 0; padding: 0; background: #000; color: #fff; font-family: sans-serif; min-height: 100%; overflow-y: auto; }
         #app { padding: 20px; }
         .section { margin-bottom: 20px; }
         .controls { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
