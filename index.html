@@ -7,14 +7,16 @@
     <style>
         body { background: #F8F9FA; color: #212529; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
         h1 { font-size: 18px; color: #6c757d; margin: 20px 0; }
-        #syncBtn { width: 100%; max-width: 300px; padding: 20px; font-size: 20px; font-weight: 600; border-radius: 8px; border: none; background: #779af2; color: #fff; cursor: pointer; margin-bottom: 10px; touch-action: manipulation; user-select: none; }
+        #syncBtn { width: 100%; max-width: 300px; padding: 20px; font-size: 20px; font-weight: 600; border-radius: 8px; border: none; background: #779af2; color: #fff; cursor: pointer; margin-bottom: 10px; touch-action: manipulation; user-select: none; z-index: 10; }
         #status { font-size: 14px; color: #495057; margin-bottom: 30px; }
         .setting-row { margin-bottom: 25px; width: 100%; max-width: 300px; text-align: center; }
         .label-row { font-size: 14px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; font-weight: 600; }
         .controls { display: flex; justify-content: center; align-items: center; gap: 20px; }
         .adj-btn { padding: 12px 20px; font-size: 18px; border-radius: 6px; border: none; background: #E9ECEF; color: #212529; cursor: pointer; }
         .val { font-size: 20px; font-weight: 600; min-width: 40px; }
-        #fakeCall { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a1a; color: #fff; display: none; z-index: 100; flex-direction: column; justify-content: space-between; align-items: center; padding: 50px 0; }
+
+        #darkOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: none; z-index: 200; }
+        #fakeCall { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a1a; color: #fff; display: none; z-index: 300; flex-direction: column; justify-content: space-between; align-items: center; padding: 50px 0; }
         .caller-id { font-size: 24px; margin-top: 50px; }
         .call-status { font-size: 16px; color: #aaa; margin-top: 10px; }
         .call-avatar { width: 100px; height: 100px; background: #333; border-radius: 50%; margin: 50px 0; }
@@ -33,41 +35,40 @@
     <div class="setting-row">
         <div class="label-row">Rotation Timer (sec)</div>
         <div class="controls">
-            <button class="adj-btn" onclick="adjustTimer('rotation', -10)">-</button>
+            <button class="adj-btn" onclick="updateVal('rotationSeconds', -10)">-</button>
             <span class="val" id="rotationTime">5</span>
-            <button class="adj-btn" onclick="adjustTimer('rotation', 10)">+</button>
+            <button class="adj-btn" onclick="updateVal('rotationSeconds', 10)">+</button>
         </div>
     </div>
     <div class="setting-row">
         <div class="label-row">Shake Timer (sec)</div>
         <div class="controls">
-            <button class="adj-btn" onclick="adjustTimer('shake', -10)">-</button>
+            <button class="adj-btn" onclick="updateVal('shakeSeconds', -10)">-</button>
             <span class="val" id="shakeTime">5</span>
-            <button class="adj-btn" onclick="adjustTimer('shake', 10)">+</button>
+            <button class="adj-btn" onclick="updateVal('shakeSeconds', 10)">+</button>
         </div>
     </div>
     <div class="setting-row">
         <div class="label-row">Shake Sensitivity</div>
         <div class="controls">
-            <button class="adj-btn" onclick="adjustSensitivity(-1)">-</button>
+            <button class="adj-btn" onclick="updateVal('shakeThreshold', -1)">-</button>
             <span class="val" id="shakeSensitivity">10</span>
-            <button class="adj-btn" onclick="adjustSensitivity(1)">+</button>
+            <button class="adj-btn" onclick="updateVal('shakeThreshold', 1)">+</button>
         </div>
     </div>
     <div class="setting-row">
         <div class="label-row">Vibration Intensity (ms)</div>
         <div class="controls">
-            <button class="adj-btn" onclick="adjustTimer('vibration', -25)">-</button>
+            <button class="adj-btn" onclick="updateVal('vibrationIntensity', -25)">-</button>
             <span class="val" id="vibrationIntensity">75</span>
-            <button class="adj-btn" onclick="adjustTimer('vibration', 25)">+</button>
+            <button class="adj-btn" onclick="updateVal('vibrationIntensity', 25)">+</button>
         </div>
     </div>
 
+    <div id="darkOverlay" onclick="disarm()"></div>
+
     <div id="fakeCall">
-        <div>
-            <div class="caller-id">Encrypted Call</div>
-            <div class="call-status">Incoming...</div>
-        </div>
+        <div><div class="caller-id">Encrypted Call</div><div class="call-status">Incoming...</div></div>
         <div class="call-avatar"></div>
         <div class="call-actions">
             <button class="call-btn decline" onclick="disarm()">✕</button>
@@ -75,28 +76,22 @@
         </div>
     </div>
 
-    <audio id="ringtone" loop>
-        <source src="data:audio/mpeg;base64,/* BASE64_HERE */" type="audio/mpeg">
-    </audio>
+    <audio id="ringtone" loop><source src="data:audio/mpeg;base64,/* BASE64 */" type="audio/mpeg"></audio>
 
 <script>
     let state = "idle";
     let rotationSeconds = 5, shakeSeconds = 5, shakeThreshold = 10, vibrationIntensity = 75;
-    let armingTimer = null, callTimer = null, pressTimer = null, vibrationLoop = null;
-    let wakeLock = null;
+    let armingTimer = null, callTimer = null, pressTimer = null, vibrationLoop = null, wakeLock = null;
+    let lastBeta = null;
 
     window.onload = () => {
         rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
         shakeSeconds = parseInt(localStorage.getItem('shakeSeconds')) || 5;
         shakeThreshold = parseInt(localStorage.getItem('shakeThreshold')) || 10;
         vibrationIntensity = parseInt(localStorage.getItem('vibrationIntensity')) || 75;
-        document.getElementById('rotationTime').innerText = rotationSeconds;
-        document.getElementById('shakeTime').innerText = shakeSeconds;
-        document.getElementById('shakeSensitivity').innerText = shakeThreshold;
-        document.getElementById('vibrationIntensity').innerText = vibrationIntensity;
+        refreshUI();
 
         const btn = document.getElementById('syncBtn');
-        
         btn.addEventListener('pointerdown', (e) => {
             e.preventDefault();
             if (state === "armed") {
@@ -119,51 +114,33 @@
         });
     };
 
-    async function requestWakeLock() {
-        try {
-            if ('wakeLock' in navigator) {
-                wakeLock = await navigator.wakeLock.request('screen');
-            }
-        } catch (err) {
-            console.error(`${err.name}, ${err.message}`);
-        }
+    function updateVal(key, delta) {
+        window[key] = Math.max(0, window[key] + delta);
+        localStorage.setItem(key, window[key]);
+        refreshUI();
     }
 
-    function saveSettings() {
-        localStorage.setItem('rotationSeconds', rotationSeconds);
-        localStorage.setItem('shakeSeconds', shakeSeconds);
-        localStorage.setItem('shakeThreshold', shakeThreshold);
-        localStorage.setItem('vibrationIntensity', vibrationIntensity);
-    }
-
-    function adjustTimer(type, delta) {
-        if (type === 'rotation') rotationSeconds = Math.max(0, rotationSeconds + delta);
-        if (type === 'shake') shakeSeconds = Math.max(0, shakeSeconds + delta);
-        if (type === 'vibration') vibrationIntensity = Math.max(0, vibrationIntensity + delta);
+    function refreshUI() {
         document.getElementById('rotationTime').innerText = rotationSeconds;
         document.getElementById('shakeTime').innerText = shakeSeconds;
-        document.getElementById('vibrationIntensity').innerText = vibrationIntensity;
-        saveSettings();
-    }
-
-    function adjustSensitivity(delta) { 
-        shakeThreshold = Math.max(1, shakeThreshold + delta); 
         document.getElementById('shakeSensitivity').innerText = shakeThreshold;
-        saveSettings();
+        document.getElementById('vibrationIntensity').innerText = vibrationIntensity;
     }
 
-    function enterArmedState(buffer) {
+    async function enterArmedState(buffer) {
         state = "armed";
         document.getElementById('syncBtn').innerText = "Stop Sync";
         document.getElementById('status').innerText = "System: Syncing (" + (buffer/1000) + "s buffer)";
         
-        // Request Wake Lock on button press gesture
-        requestWakeLock();
+        try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
 
         armingTimer = setTimeout(async () => {
             if(state !== "armed") return;
-            const granted = await requestMotionPermissions();
-            if (!granted) { disarm(); return; }
+            if (typeof DeviceMotionEvent.requestPermission === "function") {
+                const res = await DeviceMotionEvent.requestPermission();
+                if (res !== "granted") { disarm(); return; }
+            }
+            document.getElementById('darkOverlay').style.display = "block";
             window.addEventListener('devicemotion', handleShake);
             window.addEventListener('deviceorientation', handleRotation);
             document.getElementById('status').innerText = "System: Active";
@@ -174,67 +151,55 @@
         if (state !== "armed") return;
         if (navigator.vibrate) navigator.vibrate(vibrationIntensity);
         cleanupListeners();
-        document.getElementById('status').innerText = "System: Incoming Event...";
+        document.getElementById('darkOverlay').style.display = "none";
         const delay = (type === 'rotation') ? rotationSeconds : shakeSeconds;
         callTimer = setTimeout(showFakeCall, delay * 1000);
     }
 
     function showFakeCall() {
         document.getElementById('fakeCall').style.display = "flex";
-        vibrationLoop = setInterval(() => {
-            if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200]);
-        }, 1400); 
-        const r = document.getElementById('ringtone');
-        r.play().catch(() => {});
+        vibrationLoop = setInterval(() => { if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200]); }, 1400); 
+        document.getElementById('ringtone').play().catch(() => {});
     }
 
-    async function disarm() {
+    function disarm() {
         state = "idle";
-        cleanupListeners();
         if (armingTimer) clearTimeout(armingTimer);
         if (callTimer) clearTimeout(callTimer);
         if (vibrationLoop) clearInterval(vibrationLoop);
-        
-        // Release Wake Lock
-        if (wakeLock !== null) {
-            await wakeLock.release();
-            wakeLock = null;
-        }
-
+        if (pressTimer) clearTimeout(pressTimer);
+        pressTimer = null;
+        cleanupListeners();
+        if (wakeLock) { wakeLock.release(); wakeLock = null; }
+        document.getElementById('darkOverlay').style.display = "none";
         document.getElementById('fakeCall').style.display = "none";
         document.getElementById('syncBtn').innerText = "Sync";
         document.getElementById('status').innerText = "System: Idle";
-        
         if (navigator.vibrate) navigator.vibrate(0);
         const r = document.getElementById('ringtone');
-        r.pause(); 
-        r.currentTime = 0;
+        r.pause(); r.currentTime = 0;
     }
 
     function cleanupListeners() {
         window.removeEventListener('devicemotion', handleShake);
         window.removeEventListener('deviceorientation', handleRotation);
+        lastBeta = null;
     }
 
     function handleRotation(event) {
         if (state !== "armed" || event.beta == null) return;
-        if (Math.abs(event.beta) > 45) triggerEvent('rotation');
+        if (lastBeta === null) { lastBeta = event.beta; return; }
+        let delta = Math.abs(event.beta - lastBeta);
+        if (delta > 45 && delta < 300) triggerEvent('rotation');
+        lastBeta = event.beta;
     }
 
     function handleShake(event) {
         if (state !== "armed") return;
         const acc = event.accelerationIncludingGravity;
         if (!acc) return;
-        const magnitude = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
-        if (Math.abs(magnitude - 9.8) > shakeThreshold) triggerEvent('shake');
-    }
-
-    async function requestMotionPermissions() {
-        if (typeof DeviceMotionEvent.requestPermission === "function") {
-            try { return (await DeviceMotionEvent.requestPermission() === "granted"); }
-            catch(e) { return false; }
-        }
-        return true;
+        const mag = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
+        if (Math.abs(mag - 9.8) > shakeThreshold) triggerEvent('shake');
     }
 </script>
 </body>
