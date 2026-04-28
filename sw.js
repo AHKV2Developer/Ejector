@@ -2,6 +2,7 @@ const CACHE_NAME = 'heating-control-v1';
 const ASSETS = [
   './',
   './index.html', // Replace with your actual filename if different
+  './Ejector_Icon.png', // Replace with your actual filename if different
   // Add paths to any external icons or sounds here
 ];
 
