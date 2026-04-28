@@ -57,9 +57,9 @@
     <div class="setting-row">
         <div class="label-row">Vibration Intensity (ms)</div>
         <div class="controls">
-            <button class="adj-btn" onclick="adjustVibration(-25)">-</button>
+            <button class="adj-btn" onclick="adjustTimer('vibration', -25)">-</button>
             <span class="val" id="vibrationIntensity">75</span>
-            <button class="adj-btn" onclick="adjustVibration(25)">+</button>
+            <button class="adj-btn" onclick="adjustTimer('vibration', 25)">+</button>
         </div>
     </div>
 
@@ -76,13 +76,13 @@
     </div>
 
     <audio id="ringtone" loop>
-        <source src="data:audio/mpeg;base64,/* REPLACE_WITH_YOUR_BASE64_STRING */" type="audio/mpeg">
+        <source src="data:audio/mpeg;base64,/* BASE64_HERE */" type="audio/mpeg">
     </audio>
 
 <script>
     let state = "idle";
     let rotationSeconds = 5, shakeSeconds = 5, shakeThreshold = 10, vibrationIntensity = 75;
-    let timerRef = null, pressTimer = null, vibrationLoop = null;
+    let armingTimer = null, callTimer = null, pressTimer = null, vibrationLoop = null;
 
     window.onload = () => {
         rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
@@ -98,23 +98,20 @@
         
         btn.addEventListener('pointerdown', (e) => {
             e.preventDefault();
-            if (navigator.vibrate) navigator.vibrate(vibrationIntensity);
-
             if (state === "armed") {
                 disarm();
             } else {
-                // Prepare timer for arming
+                // Determine buffer on press duration
                 pressTimer = setTimeout(() => { pressTimer = "long"; }, 800);
             }
         });
 
         btn.addEventListener('pointerup', (e) => {
-            // Only arm if we were idle and the button wasn't just used to disarm
             if (state === "idle" && pressTimer !== null) {
-                const delay = (pressTimer === "long") ? 5000 : 15000;
+                const buffer = (pressTimer === "long") ? 5000 : 15000;
                 clearTimeout(pressTimer);
                 pressTimer = null;
-                enterArmedState(delay);
+                enterArmedState(buffer);
             } else {
                 clearTimeout(pressTimer);
                 pressTimer = null;
@@ -129,11 +126,14 @@
         localStorage.setItem('vibrationIntensity', vibrationIntensity);
     }
 
-    function setStatus(text) { document.getElementById('status').innerText = "System: " + text; }
-
     function adjustTimer(type, delta) {
-        if (type === 'rotation') { rotationSeconds = Math.max(0, rotationSeconds + delta); document.getElementById('rotationTime').innerText = rotationSeconds; }
-        else { shakeSeconds = Math.max(0, shakeSeconds + delta); document.getElementById('shakeTime').innerText = shakeSeconds; }
+        if (type === 'rotation') rotationSeconds = Math.max(0, rotationSeconds + delta);
+        if (type === 'shake') shakeSeconds = Math.max(0, shakeSeconds + delta);
+        if (type === 'vibration') vibrationIntensity = Math.max(0, vibrationIntensity + delta);
+        
+        document.getElementById('rotationTime').innerText = rotationSeconds;
+        document.getElementById('shakeTime').innerText = shakeSeconds;
+        document.getElementById('vibrationIntensity').innerText = vibrationIntensity;
         saveSettings();
     }
 
@@ -143,34 +143,29 @@
         saveSettings();
     }
 
-    function adjustVibration(delta) {
-        vibrationIntensity = Math.max(0, vibrationIntensity + delta);
-        document.getElementById('vibrationIntensity').innerText = vibrationIntensity;
-        saveSettings();
-    }
-
-    async function enterArmedState(delay) {
+    function enterArmedState(buffer) {
         state = "armed";
         document.getElementById('syncBtn').innerText = "Stop Sync";
-        setStatus("Syncing (" + (delay/1000) + "s delay)...");
+        document.getElementById('status').innerText = "System: Syncing (" + (buffer/1000) + "s buffer)";
         
-        setTimeout(async () => {
+        armingTimer = setTimeout(async () => {
             if(state !== "armed") return;
             const granted = await requestMotionPermissions();
-            if (!granted) { alert("Permission denied"); disarm(); return; }
+            if (!granted) { disarm(); return; }
             window.addEventListener('devicemotion', handleShake);
             window.addEventListener('deviceorientation', handleRotation);
-            setStatus("Active");
-        }, delay);
+            document.getElementById('status').innerText = "System: Active";
+        }, buffer);
     }
 
     function triggerEvent(type) {
         if (state !== "armed") return;
         if (navigator.vibrate) navigator.vibrate(vibrationIntensity);
+        
         cleanupListeners();
-        setStatus("Calling...");
-        const seconds = (type === 'rotation') ? rotationSeconds : shakeSeconds;
-        timerRef = setTimeout(showFakeCall, seconds * 1000);
+        document.getElementById('status').innerText = "System: Incoming Event...";
+        const delay = (type === 'rotation') ? rotationSeconds : shakeSeconds;
+        callTimer = setTimeout(showFakeCall, delay * 1000);
     }
 
     function showFakeCall() {
@@ -185,19 +180,18 @@
     function disarm() {
         state = "idle";
         cleanupListeners();
-        if (timerRef) clearTimeout(timerRef);
+        if (armingTimer) clearTimeout(armingTimer);
+        if (callTimer) clearTimeout(callTimer);
         if (vibrationLoop) clearInterval(vibrationLoop);
-        if (pressTimer) clearTimeout(pressTimer);
-        pressTimer = null;
         
         document.getElementById('fakeCall').style.display = "none";
         document.getElementById('syncBtn').innerText = "Sync";
+        document.getElementById('status').innerText = "System: Idle";
         
         if (navigator.vibrate) navigator.vibrate(0);
         const r = document.getElementById('ringtone');
         r.pause(); 
         r.currentTime = 0;
-        setStatus("Idle");
     }
 
     function cleanupListeners() {
@@ -205,13 +199,9 @@
         window.removeEventListener('deviceorientation', handleRotation);
     }
 
-    let lastOrientation = null;
     function handleRotation(event) {
         if (state !== "armed" || event.beta == null) return;
-        if (lastOrientation === null) { lastOrientation = event.beta; return; }
-        const diff = Math.abs(event.beta - lastOrientation);
-        lastOrientation = event.beta;
-        if (diff >= 45 && diff < 180) triggerEvent('rotation');
+        if (Math.abs(event.beta) > 45) triggerEvent('rotation');
     }
 
     function handleShake(event) {
