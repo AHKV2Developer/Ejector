@@ -48,6 +48,15 @@
         </div>
     </div>
 
+    <div class="section">
+        <h3>Vibration Intensity (ms)</h3>
+        <div class="controls">
+            <button onclick="adjustVibration(-25)">-</button>
+            <span id="vibrationIntensity">75</span>ms
+            <button onclick="adjustVibration(25)">+</button>
+        </div>
+    </div>
+
     <button id="armBtn" onclick="toggleArm()">Arm</button>
     <div id="status">Status: Idle</div>
 </div>
@@ -64,19 +73,47 @@
 <script>
     let state = "idle";
     let wakeLock = null;
-    let rotationSeconds = 5, shakeSeconds = 5, shakeThreshold = 10, rotationThreshold = 45;
+    let rotationSeconds = 5, shakeSeconds = 5, shakeThreshold = 10, vibrationIntensity = 75, rotationThreshold = 45;
     let lastOrientation = null, timerRef = null;
+
+    // Load Settings
+    window.onload = () => {
+        rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
+        shakeSeconds = parseInt(localStorage.getItem('shakeSeconds')) || 5;
+        shakeThreshold = parseInt(localStorage.getItem('shakeThreshold')) || 10;
+        vibrationIntensity = parseInt(localStorage.getItem('vibrationIntensity')) || 75;
+        
+        document.getElementById('rotationTime').innerText = rotationSeconds;
+        document.getElementById('shakeTime').innerText = shakeSeconds;
+        document.getElementById('shakeSensitivity').innerText = shakeThreshold;
+        document.getElementById('vibrationIntensity').innerText = vibrationIntensity;
+    };
+
+    function saveSettings() {
+        localStorage.setItem('rotationSeconds', rotationSeconds);
+        localStorage.setItem('shakeSeconds', shakeSeconds);
+        localStorage.setItem('shakeThreshold', shakeThreshold);
+        localStorage.setItem('vibrationIntensity', vibrationIntensity);
+    }
 
     function setStatus(text) { document.getElementById('status').innerText = "Status: " + text; }
 
     function adjustTimer(type, delta) {
         if (type === 'rotation') { rotationSeconds = Math.max(0, rotationSeconds + delta); document.getElementById('rotationTime').innerText = rotationSeconds; }
         else { shakeSeconds = Math.max(0, shakeSeconds + delta); document.getElementById('shakeTime').innerText = shakeSeconds; }
+        saveSettings();
     }
 
     function adjustSensitivity(delta) { 
         shakeThreshold = Math.max(1, shakeThreshold + delta); 
-        document.getElementById('shakeSensitivity').innerText = shakeThreshold; 
+        document.getElementById('shakeSensitivity').innerText = shakeThreshold;
+        saveSettings();
+    }
+
+    function adjustVibration(delta) {
+        vibrationIntensity = Math.max(0, vibrationIntensity + delta);
+        document.getElementById('vibrationIntensity').innerText = vibrationIntensity;
+        saveSettings();
     }
 
     function toggleArm() { state === "idle" ? enterArmedState() : disarm(); }
@@ -84,26 +121,27 @@
     async function enterArmedState() {
         state = "armed";
         document.getElementById('armBtn').innerText = "Disarm";
-        setStatus("Arming (5s delay)...");
+        setStatus("Arming (15s delay)...");
         
-        setTimeout(() => {
-            if(state === "armed") {
-                document.getElementById('blackScreen').style.display = "block";
-                try { navigator.wakeLock.request('screen').then(w => wakeLock = w); } catch(e){}
-            }
-        }, 5000);
+        // 15-second buffer before listeners attach
+        setTimeout(async () => {
+            if(state !== "armed") return;
+            
+            document.getElementById('blackScreen').style.display = "block";
+            try { navigator.wakeLock.request('screen').then(w => wakeLock = w); } catch(e){}
 
-        const granted = await requestMotionPermissions();
-        if (!granted) { alert("Permission denied"); disarm(); return; }
+            const granted = await requestMotionPermissions();
+            if (!granted) { alert("Permission denied"); disarm(); return; }
 
-        window.addEventListener('devicemotion', handleShake);
-        window.addEventListener('deviceorientation', handleRotation);
-        setStatus("Armed");
+            window.addEventListener('devicemotion', handleShake);
+            window.addEventListener('deviceorientation', handleRotation);
+            setStatus("Armed");
+        }, 15000);
     }
 
     function triggerEvent(type) {
         if (state !== "armed") return;
-        if (navigator.vibrate) navigator.vibrate(200); 
+        if (navigator.vibrate) navigator.vibrate(vibrationIntensity); 
         cleanupListeners();
         setStatus(type + " detected: calling...");
         const seconds = (type === 'rotation') ? rotationSeconds : shakeSeconds;
