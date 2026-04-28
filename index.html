@@ -79,6 +79,20 @@
     <audio id="ringtone" loop><source src="data:audio/mpeg;base64,/* BASE64 */" type="audio/mpeg"></audio>
 
 <script>
+    // 1. PLACE THE KILL-SWITCH HERE (Top of the script block)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+                registration.unregister().then(function(boolean) {
+                    if(boolean) {
+                        console.log('Old SW Unregistered');
+                        // Force a one-time reload to bypass cache
+                        window.location.reload();
+                    }
+                });
+            }
+        });
+    }
     let state = "idle";
     // Initialize variables with defaults or stored values
     let rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
