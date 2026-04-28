@@ -111,13 +111,14 @@ let shakeTimer = null;
 let rotationSeconds = 5;
 let shakeSeconds = 5;
 
-let shakeSensitivity = 10;   // user-facing value
-let shakeThreshold = 10;     // internal threshold (same as sensitivity)
+let shakeSensitivity = 10;
+let shakeThreshold = 10;
 
 let rotationThreshold = 45;
 
 let lastOrientation = null;
-let triggered = false;       // prevent double trigger
+let triggered = false;
+let sensorIgnoreUntil = 0;
 
 // ---- persistence ----
 function loadSettings() {
@@ -177,7 +178,6 @@ function startArming() {
     triggered = false;
     document.getElementById('armBtn').innerText = "Disarm";
 
-    // prevent multiple timeouts
     clearTimeout(armingTimeout);
     armingTimeout = setTimeout(() => {
         enterArmedState();
@@ -189,6 +189,8 @@ async function enterArmedState() {
 
     document.getElementById('app').style.display = "none";
     document.getElementById('blackScreen').style.display = "block";
+
+    sensorIgnoreUntil = Date.now() + 300;
 
     const granted = await requestMotionPermissions();
     if (!granted) {
@@ -209,11 +211,10 @@ async function requestMotionPermissions() {
             const r2 = await DeviceOrientationEvent.requestPermission();
             return (r1 === "granted" && r2 === "granted");
         } catch (e) {
-            console.log("Permission error:", e);
             return false;
         }
     }
-    return true; // non-iOS
+    return true;
 }
 
 function disarm() {
@@ -237,6 +238,7 @@ function disarm() {
 // ---- sensor handlers ----
 function handleRotation(event) {
     if (state !== "armed" || triggered) return;
+    if (Date.now() < sensorIgnoreUntil) return;
     if (event.beta == null) return;
 
     if (lastOrientation === null) {
@@ -247,7 +249,7 @@ function handleRotation(event) {
     const diff = Math.abs(event.beta - lastOrientation);
     lastOrientation = event.beta;
 
-    if (diff >= rotationThreshold) {
+    if (diff >= rotationThreshold && diff < 180) {
         triggerRotation();
         window.removeEventListener('deviceorientation', handleRotation);
     }
@@ -255,6 +257,7 @@ function handleRotation(event) {
 
 function handleShake(event) {
     if (state !== "armed" || triggered) return;
+    if (Date.now() < sensorIgnoreUntil) return;
 
     const acc = event.accelerationIncludingGravity;
     if (!acc) return;
@@ -265,7 +268,7 @@ function handleShake(event) {
         acc.z * acc.z
     );
 
-    if (magnitude > shakeThreshold) {
+    if (magnitude > shakeThreshold && magnitude < 40) {
         triggerShake();
         window.removeEventListener('devicemotion', handleShake);
     }
