@@ -14,9 +14,8 @@
             display: flex; flex-direction: column; align-items: center;
         }
 
-        h1 { font-size: 18px; color: #6c757d; margin-bottom: 20px; }
+        h1 { font-size: 18px; color: #6c757d; margin: 20px 0; }
 
-        /* Sync Button */
         #syncBtn { 
             width: 100%; max-width: 300px; padding: 20px; font-size: 20px; font-weight: 600;
             border-radius: 8px; border: none; background: #779af2; color: #fff; cursor: pointer;
@@ -25,8 +24,7 @@
 
         #status { font-size: 14px; color: #495057; margin-bottom: 30px; }
 
-        /* Settings */
-        .setting-row { margin-bottom: 25px; width: 100%; max-width: 300px; }
+        .setting-row { margin-bottom: 25px; width: 100%; max-width: 300px; text-align: center; }
         .label-row { font-size: 14px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; font-weight: 600; }
         .controls { display: flex; justify-content: center; align-items: center; gap: 20px; }
         .adj-btn { padding: 12px 20px; font-size: 18px; border-radius: 6px; border: none; background: #E9ECEF; color: #212529; cursor: pointer; }
@@ -102,14 +100,15 @@
         </div>
     </div>
 
-    <audio id="ringtone" loop><source src="ringtone.mp3" type="audio/mpeg"></audio>
+    <audio id="ringtone" loop>
+        <source src="data:audio/mpeg;base64,/* REPLACE_WITH_YOUR_BASE64_STRING */" type="audio/mpeg">
+    </audio>
 
 <script>
     let state = "idle";
     let rotationSeconds = 5, shakeSeconds = 5, shakeThreshold = 10, vibrationIntensity = 75, rotationThreshold = 45;
-    let lastOrientation = null, timerRef = null;
+    let timerRef = null;
 
-    // Load Settings
     window.onload = () => {
         rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
         shakeSeconds = parseInt(localStorage.getItem('shakeSeconds')) || 5;
@@ -168,7 +167,10 @@
 
     function triggerEvent(type) {
         if (state !== "armed") return;
-        if (navigator.vibrate) navigator.vibrate(vibrationIntensity); 
+        
+        // Rhythmic Vibration: 500ms on, 200ms off, repeat
+        if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500, 200]); 
+        
         cleanupListeners();
         setStatus("Calling...");
         const seconds = (type === 'rotation') ? rotationSeconds : shakeSeconds;
@@ -186,8 +188,12 @@
         cleanupListeners();
         document.getElementById('fakeCall').style.display = "none";
         document.getElementById('syncBtn').innerText = "Sync";
+        
+        // Kill Audio & Vibration
+        if (navigator.vibrate) navigator.vibrate(0); 
         const r = document.getElementById('ringtone');
         r.pause(); r.currentTime = 0;
+        
         setStatus("Idle");
     }
 
@@ -197,12 +203,14 @@
         if (timerRef) clearTimeout(timerRef);
     }
 
+    // Motion Logic (kept consistent)
+    let lastOrientation = null;
     function handleRotation(event) {
         if (state !== "armed" || event.beta == null) return;
         if (lastOrientation === null) { lastOrientation = event.beta; return; }
         const diff = Math.abs(event.beta - lastOrientation);
         lastOrientation = event.beta;
-        if (diff >= rotationThreshold && diff < 180) triggerEvent('rotation');
+        if (diff >= 45 && diff < 180) triggerEvent('rotation');
     }
 
     function handleShake(event) {
