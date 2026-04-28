@@ -83,6 +83,7 @@
     let state = "idle";
     let rotationSeconds = 5, shakeSeconds = 5, shakeThreshold = 10, vibrationIntensity = 75;
     let armingTimer = null, callTimer = null, pressTimer = null, vibrationLoop = null;
+    let wakeLock = null;
 
     window.onload = () => {
         rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
@@ -101,7 +102,6 @@
             if (state === "armed") {
                 disarm();
             } else {
-                // Determine buffer on press duration
                 pressTimer = setTimeout(() => { pressTimer = "long"; }, 800);
             }
         });
@@ -119,6 +119,16 @@
         });
     };
 
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+            }
+        } catch (err) {
+            console.error(`${err.name}, ${err.message}`);
+        }
+    }
+
     function saveSettings() {
         localStorage.setItem('rotationSeconds', rotationSeconds);
         localStorage.setItem('shakeSeconds', shakeSeconds);
@@ -130,7 +140,6 @@
         if (type === 'rotation') rotationSeconds = Math.max(0, rotationSeconds + delta);
         if (type === 'shake') shakeSeconds = Math.max(0, shakeSeconds + delta);
         if (type === 'vibration') vibrationIntensity = Math.max(0, vibrationIntensity + delta);
-        
         document.getElementById('rotationTime').innerText = rotationSeconds;
         document.getElementById('shakeTime').innerText = shakeSeconds;
         document.getElementById('vibrationIntensity').innerText = vibrationIntensity;
@@ -148,6 +157,9 @@
         document.getElementById('syncBtn').innerText = "Stop Sync";
         document.getElementById('status').innerText = "System: Syncing (" + (buffer/1000) + "s buffer)";
         
+        // Request Wake Lock on button press gesture
+        requestWakeLock();
+
         armingTimer = setTimeout(async () => {
             if(state !== "armed") return;
             const granted = await requestMotionPermissions();
@@ -161,7 +173,6 @@
     function triggerEvent(type) {
         if (state !== "armed") return;
         if (navigator.vibrate) navigator.vibrate(vibrationIntensity);
-        
         cleanupListeners();
         document.getElementById('status').innerText = "System: Incoming Event...";
         const delay = (type === 'rotation') ? rotationSeconds : shakeSeconds;
@@ -177,13 +188,19 @@
         r.play().catch(() => {});
     }
 
-    function disarm() {
+    async function disarm() {
         state = "idle";
         cleanupListeners();
         if (armingTimer) clearTimeout(armingTimer);
         if (callTimer) clearTimeout(callTimer);
         if (vibrationLoop) clearInterval(vibrationLoop);
         
+        // Release Wake Lock
+        if (wakeLock !== null) {
+            await wakeLock.release();
+            wakeLock = null;
+        }
+
         document.getElementById('fakeCall').style.display = "none";
         document.getElementById('syncBtn').innerText = "Sync";
         document.getElementById('status').innerText = "System: Idle";
