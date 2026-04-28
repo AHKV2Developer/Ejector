@@ -14,7 +14,7 @@
         #syncBtn { 
             width: 100%; max-width: 300px; padding: 20px; font-size: 20px; font-weight: 600;
             border-radius: 8px; border: none; background: #779af2; color: #fff; cursor: pointer; margin-bottom: 10px;
-            user-select: none; -webkit-user-select: none; /* Prevents text selection on long press */
+            user-select: none; -webkit-user-select: none;
         }
         #status { font-size: 14px; color: #495057; margin-bottom: 30px; }
         .setting-row { margin-bottom: 25px; width: 100%; max-width: 300px; text-align: center; }
@@ -95,8 +95,8 @@
 
 <script>
     let state = "idle";
-    let rotationSeconds = 5, shakeSeconds = 5, shakeThreshold = 10, vibrationIntensity = 75, rotationThreshold = 45;
-    let timerRef = null, pressTimer = null;
+    let rotationSeconds = 5, shakeSeconds = 5, shakeThreshold = 10, vibrationIntensity = 75;
+    let timerRef = null, pressTimer = null, vibrationLoop = null;
 
     window.onload = () => {
         rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
@@ -108,20 +108,15 @@
         document.getElementById('shakeSensitivity').innerText = shakeThreshold;
         document.getElementById('vibrationIntensity').innerText = vibrationIntensity;
 
-        // Long Press Logic
         const btn = document.getElementById('syncBtn');
         btn.addEventListener('touchstart', (e) => {
+            if (navigator.vibrate) navigator.vibrate(vibrationIntensity); // Input Acknowledgment
             if (state !== "idle") { disarm(); return; }
-            pressTimer = setTimeout(() => {
-                enterArmedState(5000); // Long Press: 5s delay
-            }, 800);
+            pressTimer = setTimeout(() => { enterArmedState(5000); }, 800); // Long Press
         });
         btn.addEventListener('touchend', (e) => {
             clearTimeout(pressTimer);
-            // If state is still idle, it was a short press
-            if (state === "idle") {
-                enterArmedState(15000); // Standard Press: 15s delay
-            }
+            if (state === "idle") { enterArmedState(15000); } // Short Press
         });
     };
 
@@ -177,7 +172,12 @@
 
     function showFakeCall() {
         document.getElementById('fakeCall').style.display = "flex";
-        if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500, 200]); 
+        
+        // Loop the vibration
+        vibrationLoop = setInterval(() => {
+            if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200]);
+        }, 1400); 
+        
         const r = document.getElementById('ringtone');
         r.play().catch(() => {});
     }
@@ -187,9 +187,13 @@
         cleanupListeners();
         document.getElementById('fakeCall').style.display = "none";
         document.getElementById('syncBtn').innerText = "Sync";
-        if (navigator.vibrate) navigator.vibrate(0); 
+        
+        // Clear everything
+        if (navigator.vibrate) navigator.vibrate(0);
+        if (vibrationLoop) clearInterval(vibrationLoop);
         const r = document.getElementById('ringtone');
         r.pause(); r.currentTime = 0;
+        
         setStatus("Idle");
     }
 
