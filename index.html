@@ -1,47 +1,177 @@
-<!DOCTYPE html> <html lang="en"> <head> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <meta charset="UTF-8" /> <title>Trigger Call App</title> <style> body, html { margin: 0; padding: 0; background: #000; color: #fff; font-family: Arial, sans-serif; height: 100%; overflow: hidden; } #app { padding: 20px; } .section { margin-bottom: 20px; } .controls { display: flex; align-items: center; gap: 10px; } button { padding: 10px 20px; font-size: 18px; } #blackScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: none; z-index: 50; } #disarmOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; z-index: 60; justify-content: center; align-items: center; } #fakeCall { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #111; color: #fff; display: none; z-index: 100; text-align: center; padding-top: 100px; } #fakeCall button { margin-top: 40px; padding: 20px 40px; font-size: 24px; } </style> </head> <body> <div id="app"> <h2>Trigger Call App</h2>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<title>Trigger Call App</title>
 
-<div class="section"> <h3>Rotation Timer</h3> <div class="controls"> <button onclick="adjustTimer('rotation', -10)">-</button> <span id="rotationTime">5</span>s <button onclick="adjustTimer('rotation', 10)">+</button> </div> </div>
+<style>
+body, html {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    color: #fff;
+    font-family: Arial, sans-serif;
+    height: 100%;
+    overflow: hidden;
+}
+#app { padding: 20px; }
+.section { margin-bottom: 20px; }
+.controls { display: flex; align-items: center; gap: 10px; }
+button { padding: 10px 20px; font-size: 18px; }
 
-<div class="section"> <h3>Shake Timer</h3> <div class="controls"> <button onclick="adjustTimer('shake', -10)">-</button> <span id="shakeTime">5</span>s <button onclick="adjustTimer('shake', 10)">+</button> </div> </div>
+#blackScreen {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #000; display: none; z-index: 50;
+}
+ = null;
+let rotationTimer = null;
+let shakeTimer = null;
 
-<button id="armBtn" onclick="toggleArm()">Arm</button>
+let rotationSeconds = 5;
+let shakeSeconds = 5;
 
-<div class="section"> <h3>Testing</h3> <button onclick="simulateRotation()">Rotation Recorded</button> <button onclick="simulateShake()">Shake Recorded</button> </div> </div>
+let rotationThreshold = 45;
+let shakeThreshold = 15;
 
-<div id="blackScreen"></div>
+let lastOrientation = null;
 
-<div id="disarmOverlay"> <button onclick="disarm()">Disarm</button> </div>
+function adjustTimer(type, delta) {
+    if (type === 'rotation') {
+        rotationSeconds = Math.max(0, rotationSeconds + delta);
+        document.getElementById('rotationTime').innerText = rotationSeconds;
+    } else {
+        shakeSeconds = Math.max(0, shakeSeconds + delta);
+        document.getElementById('shakeTime').innerText = shakeSeconds;
+    }
+}
 
-<div id="fakeCall" onclick="stopFakeCall()"> <h1>Incoming Call...</h1> <button>Answer</button> </div>
+function toggleArm() {
+    if (state === "idle") startArming();
+    else if (state === "arming") disarm();
+}
 
-<audio id="ringtone" loop> <source src="ringtone.mp3" type="audio/mpeg"> </audio>
+function startArming() {
+    state = "arming";
+    document.getElementById('armBtn').innerText = "Disarm";
 
-<script> let state = "idle"; let armingTimeout = null; let rotationTimer = null; let shakeTimer = null; let rotationSeconds = 5; let shakeSeconds = 5; let rotationThreshold = 45; let shakeThreshold = 15; let lastOrientation = null;
+    armingTimeout = setTimeout(() => {
+        enterArmedState();
+    }, 5000);
+}
 
-function adjustTimer(type, delta) { if (type === 'rotation') { rotationSeconds = Math.max(0, rotationSeconds + delta); document.getElementById('rotationTime').innerText = rotationSeconds; } else { shakeSeconds = Math.max(0, shakeSeconds + delta); document.getElementById('shakeTime').innerText = shakeSeconds; } }
+function enterArmedState() {
+    state = "armed";
+    document.getElementById('app').style.display = "none";
+    document.getElementById('blackScreen').style.display = "block";
 
-function toggleArm() { if (state === "idle") startArming(); else if (state === "arming") disarm(); }
+    requestMotionPermissions().then(() => {
+        window.addEventListener('devicemotion', handleShake);
+        window.addEventListener('deviceorientation', handleRotation);
+    });
+}
 
-function startArming() { state = "arming"; document.getElementById('armBtn').innerText = "Disarm"; armingTimeout = setTimeout(() => { enterArmedState(); }, 5000); }
+async function requestMotionPermissions() {
+    if (typeof DeviceMotionEvent.requestPermission === "function") {
+        try {
+            let r1 = await DeviceMotionEvent.requestPermission();
+            let r2 = await DeviceOrientationEvent.requestPermission();
+            return (r1 === "granted" && r2 === "granted");
+        } catch (e) {
+            console.log("Permission error:", e);
+        }
+    }
+    return true; // Android usually doesn't need permission
+}
 
-function enterArmedState() { state = "armed"; document.getElementById('app').style.display = "none"; document.getElementById('blackScreen').style.display = "block"; window.addEventListener('devicemotion', handleShake); window.addEventListener('deviceorientation', handleRotation); }
+function disarm() {
+    state = "idle";
+    clearTimeout(armingTimeout);
+    clearInterval(rotationTimer);
+    clearInterval(shakeTimer);
 
-function disarm() { state = "idle"; clearTimeout(armingTimeout); clearInterval(rotationTimer); clearInterval(shakeTimer); window.removeEventListener('devicemotion', handleShake); window.removeEventListener('deviceorientation', handleRotation); document.getElementById('app').style.display = "block"; document.getElementById('blackScreen').style.display = "none"; document.getElementById('disarmOverlay').style.display = "none"; document.getElementById('armBtn').innerText = "Arm"; }
+    window.removeEventListener('devicemotion', handleShake);
+    window.removeEventListener('deviceorientation', handleRotation);
 
-function handleRotation(event) { if (!lastOrientation) lastOrientation = event.beta; let diff = Math.abs(event.beta - lastOrientation); if (diff >= rotationThreshold) triggerRotation(); }
+    document.getElementById('app').style.display = "block";
+    document.getElementById('blackScreen').style.display = "none";
+    document.getElementById('disarmOverlay').style.display = "none";
+    document.getElementById('armBtn').innerText = "Arm";
+}
 
-function handleShake(event) { let acc = event.accelerationIncludingGravity; let magnitude = Math.sqrt(acc.xacc.x + acc.yacc.y + acc.z*acc.z); if (magnitude > shakeThreshold) triggerShake(); }
+function handleRotation(event) {
+    if (lastOrientation === null) lastOrientation = event.beta;
 
-function triggerRotation() { navigator.vibrate(100); startTimer('rotation'); window.removeEventListener('deviceorientation', handleRotation); }
+    let diff = Math.abs(event.beta - lastOrientation);
 
-function triggerShake() { navigator.vibrate(100); startTimer('shake'); window.removeEventListener('devicemotion', handleShake); }
+    if (diff >= rotationThreshold) {
+        triggerRotation();
+        window.removeEventListener('deviceorientation', handleRotation);
+    }
+}
 
-function startTimer(type) { let seconds = type === 'rotation' ? rotationSeconds : shakeSeconds; let timer = setTimeout(() => { showFakeCall(); }, seconds * 1000); if (type === 'rotation') rotationTimer = timer; else shakeTimer = timer; }
+function handleShake(event) {
+    let acc = event.accelerationIncludingGravity;
+    if (!acc) return;
 
-function simulateRotation() { triggerRotation(); } function simulateShake() { triggerShake(); }
+    let magnitude = Math.sqrt(
+        acc.x * acc.x +
+        acc.y * acc.y +
+        acc.z * acc.z
+    );
 
-function showFakeCall() { document.getElementById('fakeCall').style.display = "block"; document.getElementById('blackScreen').style.display = "none"; document.getElementById('disarmOverlay').style.display = "none"; document.getElementById('ringtone').play(); }
+    if (magnitude > shakeThreshold) {
+        triggerShake();
+        window.removeEventListener('devicemotion', handleShake);
+    }
+}
 
-function stopFakeCall() { document.getElementById('fakeCall').style.display = "none"; document.getElementById('ringtone').pause(); document.getElementById('ringtone').currentTime = 0; disarm(); }
+function triggerRotation() {
+    navigator.vibrate(100);
+    startTimer('rotation');
+}
 
-document.addEventListener('visibilitychange', () => { if (state === "armed" && !document.hidden) { document.getElementById('disarmOverlay').style.display = "flex"; } }); </script> </body> </html>
+function triggerShake() {
+    navigator.vibrate(100);
+    startTimer('shake');
+}
+
+function startTimer(type) {
+    let seconds = type === 'rotation' ? rotationSeconds : shakeSeconds;
+
+    let timer = setTimeout(() => {
+        showFakeCall();
+    }, seconds * 1000);
+
+    if (type === 'rotation') rotationTimer = timer;
+    else shakeTimer = timer;
+}
+
+function simulateRotation() { triggerRotation(); }
+function simulateShake() { triggerShake(); }
+
+function showFakeCall() {
+    document.getElementById('fakeCall').style.display = "block";
+    document.getElementById('blackScreen').style.display = "none";
+    document.getElementById('disarmOverlay').style.display = "none";
+    document.getElementById('ringtone').play();
+}
+
+function stopFakeCall() {
+    document.getElementById('fakeCall').style.display = "none";
+    let r = document.getElementById('ringtone');
+    r.pause();
+    r.currentTime = 0;
+    disarm();
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (state === "armed" && !document.hidden) {
+        document.getElementById('disarmOverlay').style.display = "flex";
+    }
+});
+</script>
+
+</body>
+</html>
