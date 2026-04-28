@@ -79,15 +79,13 @@
 <script>
     let state = "idle";
     let rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
-    let shakeSeconds = parseInt(localStorage.getItem('shakeSeconds')) || 10;
+    let shakeSeconds = parseInt(localStorage.getItem('shakeSeconds')) || 5;
     let shakeThreshold = parseInt(localStorage.getItem('shakeThreshold')) || 10;
     let vibrationIntensity = parseInt(localStorage.getItem('vibrationIntensity')) || 75;
     
     let armingTimer = null, callTimer = null, pressTimer = null, vibrationLoop = null, wakeLock = null;
-    
-    // Baseline for Gravity detection
     let baseAcc = { x: null, y: null, z: null };
-    const ROTATION_GRAVITY_THRESHOLD = 6.5; // Threshold for significant orientation shift
+    const ROTATION_GRAVITY_THRESHOLD = 6.5; 
 
     function refreshUI() {
         document.getElementById('rotationTimeDisp').innerText = rotationSeconds;
@@ -102,7 +100,7 @@
         if (key === 'shakeThreshold') shakeThreshold = Math.max(1, shakeThreshold + delta);
         if (key === 'vibrationIntensity') vibrationIntensity = Math.max(0, vibrationIntensity + delta);
         
-        localStorage.setItem(key, eval(key));
+        localStorage.setItem(key, window[key]);
         refreshUI();
     }
 
@@ -137,7 +135,6 @@
         armingTimer = setTimeout(() => {
             if(state !== "armed") return;
             
-            // Capture initial gravity orientation snapshot once buffer ends
             const captureBase = (event) => {
                 const acc = event.accelerationIncludingGravity;
                 if (acc && baseAcc.x === null) {
@@ -161,8 +158,11 @@
         window.removeEventListener('devicemotion', handleMotion);
         document.getElementById('darkOverlay').style.display = "none";
         
+        // Capitalize type for Title Case status (e.g., 'rotation' becomes 'Rotation')
+        const titleType = type.charAt(0).toUpperCase() + type.slice(1);
+        document.getElementById('status').innerText = `Trigger: ${titleType}`;
+
         const delay = (type === 'rotation') ? rotationSeconds : shakeSeconds;
-        document.getElementById('status').innerText = `Trigger: ${type.toUpperCase()}`;
         callTimer = setTimeout(showFakeCall, delay * 1000);
     }
 
@@ -192,7 +192,14 @@
         const acc = event.accelerationIncludingGravity;
         if (!acc) return;
 
-        // 1. ROTATION LOGIC (Change in Gravity Vector > 6.5 m/s^2)
+        // 1. PRIORITIZE SHAKE
+        const mag = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
+        if (Math.abs(mag - 9.8) > shakeThreshold) {
+            triggerEvent('shake');
+            return; 
+        }
+
+        // 2. CHECK ROTATION (Only if not shaking)
         if (baseAcc.x !== null) {
             const dX = Math.abs(acc.x - baseAcc.x);
             const dY = Math.abs(acc.y - baseAcc.y);
@@ -200,14 +207,7 @@
 
             if (dX > ROTATION_GRAVITY_THRESHOLD || dY > ROTATION_GRAVITY_THRESHOLD || dZ > ROTATION_GRAVITY_THRESHOLD) {
                 triggerEvent('rotation');
-                return;
             }
-        }
-
-        // 2. SHAKE LOGIC (Force minus Gravity)
-        const mag = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
-        if (Math.abs(mag - 9.8) > shakeThreshold) {
-            triggerEvent('shake');
         }
     }
 </script>
