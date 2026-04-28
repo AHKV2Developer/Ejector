@@ -27,7 +27,7 @@
 </head>
 <body>
 
-    <h1>Central Heating Control 1</h1>
+    <h1>Central Heating Control</h1>
     <button id="syncBtn">Sync</button>
     <div id="status">System: Idle</div>
 
@@ -84,7 +84,10 @@
     let vibrationIntensity = parseInt(localStorage.getItem('vibrationIntensity')) || 75;
     
     let armingTimer = null, callTimer = null, pressTimer = null, vibrationLoop = null, wakeLock = null;
-    let lastOrientation = { alpha: null, beta: null, gamma: null };
+    
+    // Baseline for Gravity detection
+    let baseAcc = { x: null, y: null, z: null };
+    const ROTATION_GRAVITY_THRESHOLD = 6.5; // Threshold for significant orientation shift
 
     function refreshUI() {
         document.getElementById('rotationTimeDisp').innerText = rotationSeconds;
@@ -124,15 +127,28 @@
         state = "armed";
         document.getElementById('syncBtn').innerText = "Stop Sync";
         document.getElementById('status').innerText = `System: Syncing (${buffer/1000}s buffer)`;
+        
         if (typeof DeviceMotionEvent.requestPermission === "function") {
-            try { await DeviceMotionEvent.requestPermission(); await DeviceOrientationEvent.requestPermission(); } catch (e) {}
+            try { await DeviceMotionEvent.requestPermission(); } catch (e) {}
         }
+        
         try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+
         armingTimer = setTimeout(() => {
             if(state !== "armed") return;
+            
+            // Capture initial gravity orientation snapshot once buffer ends
+            const captureBase = (event) => {
+                const acc = event.accelerationIncludingGravity;
+                if (acc && baseAcc.x === null) {
+                    baseAcc = { x: acc.x, y: acc.y, z: acc.z };
+                    window.removeEventListener('devicemotion', captureBase);
+                }
+            };
+            window.addEventListener('devicemotion', captureBase);
+
             document.getElementById('darkOverlay').style.display = "block";
-            window.addEventListener('devicemotion', handleShake);
-            window.addEventListener('deviceorientation', handleRotation);
+            window.addEventListener('devicemotion', handleMotion);
             document.getElementById('status').innerText = "System: Active";
         }, buffer);
     }
@@ -141,9 +157,12 @@
         if (state !== "armed") return;
         state = "triggered";
         if (navigator.vibrate) navigator.vibrate(vibrationIntensity);
-        cleanupListeners();
+        
+        window.removeEventListener('devicemotion', handleMotion);
         document.getElementById('darkOverlay').style.display = "none";
+        
         const delay = (type === 'rotation') ? rotationSeconds : shakeSeconds;
+        document.getElementById('status').innerText = `Trigger: ${type.toUpperCase()}`;
         callTimer = setTimeout(showFakeCall, delay * 1000);
     }
 
@@ -156,52 +175,40 @@
     function disarm() {
         state = "idle";
         clearTimeout(armingTimer); clearTimeout(callTimer); clearInterval(vibrationLoop);
-        cleanupListeners();
+        window.removeEventListener('devicemotion', handleMotion);
+        baseAcc = { x: null, y: null, z: null };
+        
         if (wakeLock) { wakeLock.release(); wakeLock = null; }
         document.getElementById('darkOverlay').style.display = "none";
         document.getElementById('fakeCall').style.display = "none";
         document.getElementById('syncBtn').innerText = "Sync";
         document.getElementById('status').innerText = "System: Idle";
+        
         const r = document.getElementById('ringtone'); r.pause(); r.currentTime = 0;
     }
 
-    function cleanupListeners() {
-        window.removeEventListener('devicemotion', handleShake);
-        window.removeEventListener('deviceorientation', handleRotation);
-        lastOrientation = { alpha: null, beta: null, gamma: null };
-    }
-
-    function handleRotation(event) {
-        if (state !== "armed") return;
-        
-        // Initializing first reading
-        if (lastOrientation.alpha === null) {
-            lastOrientation = { alpha: event.alpha, beta: event.beta, gamma: event.gamma };
-            return;
-        }
-
-        // Calculate deltas for all 3 axes
-        let dAlpha = Math.abs(event.alpha - lastOrientation.alpha);
-        let dBeta = Math.abs(event.beta - lastOrientation.beta);
-        let dGamma = Math.abs(event.gamma - lastOrientation.gamma);
-
-        // Handle the 0/360 wrap-around for compass (Alpha)
-        if (dAlpha > 180) dAlpha = 360 - dAlpha;
-
-        // TRIGGER: 70 degrees on ANY axis
-        if (dAlpha > 70 || dBeta > 70 || dGamma > 70) {
-            triggerEvent('rotation');
-        }
-
-        lastOrientation = { alpha: event.alpha, beta: event.beta, gamma: event.gamma };
-    }
-
-    function handleShake(event) {
+    function handleMotion(event) {
         if (state !== "armed") return;
         const acc = event.accelerationIncludingGravity;
         if (!acc) return;
+
+        // 1. ROTATION LOGIC (Change in Gravity Vector > 6.5 m/s^2)
+        if (baseAcc.x !== null) {
+            const dX = Math.abs(acc.x - baseAcc.x);
+            const dY = Math.abs(acc.y - baseAcc.y);
+            const dZ = Math.abs(acc.z - baseAcc.z);
+
+            if (dX > ROTATION_GRAVITY_THRESHOLD || dY > ROTATION_GRAVITY_THRESHOLD || dZ > ROTATION_GRAVITY_THRESHOLD) {
+                triggerEvent('rotation');
+                return;
+            }
+        }
+
+        // 2. SHAKE LOGIC (Force minus Gravity)
         const mag = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
-        if (Math.abs(mag - 9.8) > shakeThreshold) triggerEvent('shake');
+        if (Math.abs(mag - 9.8) > shakeThreshold) {
+            triggerEvent('shake');
+        }
     }
 </script>
 </body>
