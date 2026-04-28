@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Central Heating Control 1</title>
+    <title>Central Heating Control</title>
     <style>
         body { background: #F8F9FA; color: #212529; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
         h1 { font-size: 18px; color: #6c757d; margin: 20px 0; }
@@ -14,7 +14,6 @@
         .controls { display: flex; justify-content: center; align-items: center; gap: 20px; }
         .adj-btn { padding: 12px 20px; font-size: 18px; border-radius: 6px; border: none; background: #E9ECEF; color: #212529; cursor: pointer; }
         .val { font-size: 20px; font-weight: 600; min-width: 40px; }
-
         #darkOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: none; z-index: 200; }
         #fakeCall { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a1a; color: #fff; display: none; z-index: 300; flex-direction: column; justify-content: space-between; align-items: center; padding: 50px 0; }
         .caller-id { font-size: 24px; margin-top: 50px; }
@@ -28,7 +27,7 @@
 </head>
 <body>
 
-    <h1>Central Heating Control</h1>
+    <h1>Central Heating Control 1</h1>
     <button id="syncBtn">Sync</button>
     <div id="status">System: Idle</div>
 
@@ -36,7 +35,7 @@
         <div class="label-row">Rotation Timer (sec)</div>
         <div class="controls">
             <button class="adj-btn" onclick="updateVal('rotationSeconds', -10)">-</button>
-            <span class="val" id="rotationTime">5</span>
+            <span class="val" id="rotationTimeDisp">5</span>
             <button class="adj-btn" onclick="updateVal('rotationSeconds', 10)">+</button>
         </div>
     </div>
@@ -44,7 +43,7 @@
         <div class="label-row">Shake Timer (sec)</div>
         <div class="controls">
             <button class="adj-btn" onclick="updateVal('shakeSeconds', -10)">-</button>
-            <span class="val" id="shakeTime">5</span>
+            <span class="val" id="shakeTimeDisp">5</span>
             <button class="adj-btn" onclick="updateVal('shakeSeconds', 10)">+</button>
         </div>
     </div>
@@ -52,7 +51,7 @@
         <div class="label-row">Shake Sensitivity</div>
         <div class="controls">
             <button class="adj-btn" onclick="updateVal('shakeThreshold', -1)">-</button>
-            <span class="val" id="shakeSensitivity">10</span>
+            <span class="val" id="shakeSensDisp">10</span>
             <button class="adj-btn" onclick="updateVal('shakeThreshold', 1)">+</button>
         </div>
     </div>
@@ -60,13 +59,12 @@
         <div class="label-row">Vibration Intensity (ms)</div>
         <div class="controls">
             <button class="adj-btn" onclick="updateVal('vibrationIntensity', -25)">-</button>
-            <span class="val" id="vibrationValue">75</span>
+            <span class="val" id="vibeIntDisp">75</span>
             <button class="adj-btn" onclick="updateVal('vibrationIntensity', 25)">+</button>
         </div>
     </div>
 
     <div id="darkOverlay" onclick="disarm()"></div>
-
     <div id="fakeCall">
         <div><div class="caller-id">Encrypted Call</div><div class="call-status">Incoming...</div></div>
         <div class="call-avatar"></div>
@@ -79,43 +77,39 @@
     <audio id="ringtone" loop><source src="data:audio/mpeg;base64,/* BASE64 */" type="audio/mpeg"></audio>
 
 <script>
-    // 1. PLACE THE KILL-SWITCH HERE (Top of the script block)
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-            for(let registration of registrations) {
-                registration.unregister().then(function(boolean) {
-                    if(boolean) {
-                        console.log('Old SW Unregistered');
-                        // Force a one-time reload to bypass cache
-                        window.location.reload();
-                    }
-                });
-            }
-        });
-    }
     let state = "idle";
-    // Initialize variables with defaults or stored values
     let rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
     let shakeSeconds = parseInt(localStorage.getItem('shakeSeconds')) || 5;
     let shakeThreshold = parseInt(localStorage.getItem('shakeThreshold')) || 10;
     let vibrationIntensity = parseInt(localStorage.getItem('vibrationIntensity')) || 75;
-
+    
     let armingTimer = null, callTimer = null, pressTimer = null, vibrationLoop = null, wakeLock = null;
-    let lastBeta = null;
+    let lastOrientation = { alpha: null, beta: null, gamma: null };
+
+    function refreshUI() {
+        document.getElementById('rotationTimeDisp').innerText = rotationSeconds;
+        document.getElementById('shakeTimeDisp').innerText = shakeSeconds;
+        document.getElementById('shakeSensDisp').innerText = shakeThreshold;
+        document.getElementById('vibeIntDisp').innerText = vibrationIntensity;
+    }
+
+    function updateVal(key, delta) {
+        if (key === 'rotationSeconds') rotationSeconds = Math.max(0, rotationSeconds + delta);
+        if (key === 'shakeSeconds') shakeSeconds = Math.max(0, shakeSeconds + delta);
+        if (key === 'shakeThreshold') shakeThreshold = Math.max(1, shakeThreshold + delta);
+        if (key === 'vibrationIntensity') vibrationIntensity = Math.max(0, vibrationIntensity + delta);
+        
+        localStorage.setItem(key, eval(key));
+        refreshUI();
+    }
 
     window.onload = () => {
         refreshUI();
-
         const btn = document.getElementById('syncBtn');
         btn.addEventListener('pointerdown', (e) => {
-            e.preventDefault();
-            if (state !== "idle") {
-                disarm();
-            } else {
-                pressTimer = setTimeout(() => { pressTimer = "long"; }, 800);
-            }
+            if (state !== "idle") { disarm(); } 
+            else { pressTimer = setTimeout(() => { pressTimer = "long"; }, 800); }
         });
-
         btn.addEventListener('pointerup', (e) => {
             if (state === "idle" && pressTimer !== null) {
                 const buffer = (pressTimer === "long") ? 5000 : 15000;
@@ -126,39 +120,14 @@
         });
     };
 
-    function updateVal(key, delta) {
-        // Direct logic fix: update the global variable and persist
-        if (key === 'rotationSeconds') rotationSeconds = Math.max(0, rotationSeconds + delta);
-        if (key === 'shakeSeconds') shakeSeconds = Math.max(0, shakeSeconds + delta);
-        if (key === 'shakeThreshold') shakeThreshold = Math.max(1, shakeThreshold + delta);
-        if (key === 'vibrationIntensity') vibrationIntensity = Math.max(0, vibrationIntensity + delta);
-        
-        localStorage.setItem(key, eval(key));
-        refreshUI();
-    }
-
-    function refreshUI() {
-        // Mapping internal variables to correct UI IDs
-        document.getElementById('rotationTime').innerText = rotationSeconds;
-        document.getElementById('shakeTime').innerText = shakeSeconds;
-        document.getElementById('shakeSensitivity').innerText = shakeThreshold;
-        document.getElementById('vibrationValue').innerText = vibrationIntensity;
-    }
-
     async function enterArmedState(buffer) {
         state = "armed";
         document.getElementById('syncBtn').innerText = "Stop Sync";
-        document.getElementById('status').innerText = "System: Syncing (" + (buffer/1000) + "s buffer)";
-        
+        document.getElementById('status').innerText = `System: Syncing (${buffer/1000}s buffer)`;
         if (typeof DeviceMotionEvent.requestPermission === "function") {
-            try {
-                const res = await DeviceMotionEvent.requestPermission();
-                if (res !== "granted") { disarm(); return; }
-            } catch (e) { console.error(e); }
+            try { await DeviceMotionEvent.requestPermission(); await DeviceOrientationEvent.requestPermission(); } catch (e) {}
         }
-
         try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
-
         armingTimer = setTimeout(() => {
             if(state !== "armed") return;
             document.getElementById('darkOverlay').style.display = "block";
@@ -186,34 +155,45 @@
 
     function disarm() {
         state = "idle";
-        if (armingTimer) clearTimeout(armingTimer);
-        if (callTimer) clearTimeout(callTimer);
-        if (vibrationLoop) clearInterval(vibrationLoop);
-        if (pressTimer) clearTimeout(pressTimer);
-        pressTimer = null;
+        clearTimeout(armingTimer); clearTimeout(callTimer); clearInterval(vibrationLoop);
         cleanupListeners();
         if (wakeLock) { wakeLock.release(); wakeLock = null; }
         document.getElementById('darkOverlay').style.display = "none";
         document.getElementById('fakeCall').style.display = "none";
         document.getElementById('syncBtn').innerText = "Sync";
         document.getElementById('status').innerText = "System: Idle";
-        if (navigator.vibrate) navigator.vibrate(0);
-        const r = document.getElementById('ringtone');
-        r.pause(); r.currentTime = 0;
+        const r = document.getElementById('ringtone'); r.pause(); r.currentTime = 0;
     }
 
     function cleanupListeners() {
         window.removeEventListener('devicemotion', handleShake);
         window.removeEventListener('deviceorientation', handleRotation);
-        lastBeta = null;
+        lastOrientation = { alpha: null, beta: null, gamma: null };
     }
 
     function handleRotation(event) {
-        if (state !== "armed" || event.beta == null) return;
-        if (lastBeta === null) { lastBeta = event.beta; return; }
-        let delta = Math.abs(event.beta - lastBeta);
-        if (delta > 45 && delta < 300) triggerEvent('rotation');
-        lastBeta = event.beta;
+        if (state !== "armed") return;
+        
+        // Initializing first reading
+        if (lastOrientation.alpha === null) {
+            lastOrientation = { alpha: event.alpha, beta: event.beta, gamma: event.gamma };
+            return;
+        }
+
+        // Calculate deltas for all 3 axes
+        let dAlpha = Math.abs(event.alpha - lastOrientation.alpha);
+        let dBeta = Math.abs(event.beta - lastOrientation.beta);
+        let dGamma = Math.abs(event.gamma - lastOrientation.gamma);
+
+        // Handle the 0/360 wrap-around for compass (Alpha)
+        if (dAlpha > 180) dAlpha = 360 - dAlpha;
+
+        // TRIGGER: 70 degrees on ANY axis
+        if (dAlpha > 70 || dBeta > 70 || dGamma > 70) {
+            triggerEvent('rotation');
+        }
+
+        lastOrientation = { alpha: event.alpha, beta: event.beta, gamma: event.gamma };
     }
 
     function handleShake(event) {
