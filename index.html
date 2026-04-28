@@ -14,6 +14,7 @@
         .controls { display: flex; justify-content: center; align-items: center; gap: 20px; }
         .adj-btn { padding: 12px 20px; font-size: 18px; border-radius: 6px; border: none; background: #E9ECEF; color: #212529; cursor: pointer; }
         .val { font-size: 20px; font-weight: 600; min-width: 40px; }
+
         #darkOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: none; z-index: 200; }
         #fakeCall { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a1a; color: #fff; display: none; z-index: 300; flex-direction: column; justify-content: space-between; align-items: center; padding: 50px 0; }
         .caller-id { font-size: 24px; margin-top: 50px; }
@@ -34,17 +35,17 @@
     <div class="setting-row">
         <div class="label-row">Rotation Timer (sec)</div>
         <div class="controls">
-            <button class="adj-btn" onclick="updateVal('rotationSeconds', -1)">-</button>
+            <button class="adj-btn" onclick="updateVal('rotationSeconds', -10)">-</button>
             <span class="val" id="rotationTime">5</span>
-            <button class="adj-btn" onclick="updateVal('rotationSeconds', 1)">+</button>
+            <button class="adj-btn" onclick="updateVal('rotationSeconds', 10)">+</button>
         </div>
     </div>
     <div class="setting-row">
         <div class="label-row">Shake Timer (sec)</div>
         <div class="controls">
-            <button class="adj-btn" onclick="updateVal('shakeSeconds', -1)">-</button>
+            <button class="adj-btn" onclick="updateVal('shakeSeconds', -10)">-</button>
             <span class="val" id="shakeTime">5</span>
-            <button class="adj-btn" onclick="updateVal('shakeSeconds', 1)">+</button>
+            <button class="adj-btn" onclick="updateVal('shakeSeconds', 10)">+</button>
         </div>
     </div>
     <div class="setting-row">
@@ -59,7 +60,7 @@
         <div class="label-row">Vibration Intensity (ms)</div>
         <div class="controls">
             <button class="adj-btn" onclick="updateVal('vibrationIntensity', -25)">-</button>
-            <span class="val" id="vibrationIntensityDisplay">75</span>
+            <span class="val" id="vibrationValue">75</span>
             <button class="adj-btn" onclick="updateVal('vibrationIntensity', 25)">+</button>
         </div>
     </div>
@@ -79,26 +80,24 @@
 
 <script>
     let state = "idle";
-    let rotationSeconds = 5, shakeSeconds = 5, shakeThreshold = 10, vibrationIntensity = 75;
+    // Initialize variables with defaults or stored values
+    let rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
+    let shakeSeconds = parseInt(localStorage.getItem('shakeSeconds')) || 5;
+    let shakeThreshold = parseInt(localStorage.getItem('shakeThreshold')) || 10;
+    let vibrationIntensity = parseInt(localStorage.getItem('vibrationIntensity')) || 75;
+
     let armingTimer = null, callTimer = null, pressTimer = null, vibrationLoop = null, wakeLock = null;
     let lastBeta = null;
 
     window.onload = () => {
-        rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 5;
-        shakeSeconds = parseInt(localStorage.getItem('shakeSeconds')) || 5;
-        shakeThreshold = parseInt(localStorage.getItem('shakeThreshold')) || 10;
-        vibrationIntensity = parseInt(localStorage.getItem('vibrationIntensity')) || 75;
         refreshUI();
 
         const btn = document.getElementById('syncBtn');
-        
-        // Use pointer events for cleaner touch/click handling
         btn.addEventListener('pointerdown', (e) => {
             e.preventDefault();
             if (state !== "idle") {
                 disarm();
             } else {
-                // Short press = 15s delay, Long press = 5s delay
                 pressTimer = setTimeout(() => { pressTimer = "long"; }, 800);
             }
         });
@@ -114,32 +113,33 @@
     };
 
     function updateVal(key, delta) {
-        window[key] = Math.max(0, window[key] + delta);
-        localStorage.setItem(key, window[key]);
+        // Direct logic fix: update the global variable and persist
+        if (key === 'rotationSeconds') rotationSeconds = Math.max(0, rotationSeconds + delta);
+        if (key === 'shakeSeconds') shakeSeconds = Math.max(0, shakeSeconds + delta);
+        if (key === 'shakeThreshold') shakeThreshold = Math.max(1, shakeThreshold + delta);
+        if (key === 'vibrationIntensity') vibrationIntensity = Math.max(0, vibrationIntensity + delta);
+        
+        localStorage.setItem(key, eval(key));
         refreshUI();
     }
 
     function refreshUI() {
+        // Mapping internal variables to correct UI IDs
         document.getElementById('rotationTime').innerText = rotationSeconds;
         document.getElementById('shakeTime').innerText = shakeSeconds;
         document.getElementById('shakeSensitivity').innerText = shakeThreshold;
-        document.getElementById('vibrationIntensityDisplay').innerText = vibrationIntensity;
+        document.getElementById('vibrationValue').innerText = vibrationIntensity;
     }
 
     async function enterArmedState(buffer) {
         state = "armed";
         document.getElementById('syncBtn').innerText = "Stop Sync";
-        document.getElementById('status').innerText = `System: Syncing (${buffer/1000}s buffer)`;
+        document.getElementById('status').innerText = "System: Syncing (" + (buffer/1000) + "s buffer)";
         
-        // Handle Motion Permission for iOS/Chrome
-        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        if (typeof DeviceMotionEvent.requestPermission === "function") {
             try {
-                const permissionState = await DeviceMotionEvent.requestPermission();
-                if (permissionState !== 'granted') {
-                    alert("Motion permission required for sync.");
-                    disarm();
-                    return;
-                }
+                const res = await DeviceMotionEvent.requestPermission();
+                if (res !== "granted") { disarm(); return; }
             } catch (e) { console.error(e); }
         }
 
@@ -156,51 +156,36 @@
 
     function triggerEvent(type) {
         if (state !== "armed") return;
-        state = "triggered"; // Prevent double triggers
-        
+        state = "triggered";
         if (navigator.vibrate) navigator.vibrate(vibrationIntensity);
         cleanupListeners();
-        
+        document.getElementById('darkOverlay').style.display = "none";
         const delay = (type === 'rotation') ? rotationSeconds : shakeSeconds;
-        document.getElementById('status').innerText = `System: Call in ${delay}s`;
-        
         callTimer = setTimeout(showFakeCall, delay * 1000);
     }
 
     function showFakeCall() {
-        document.getElementById('darkOverlay').style.display = "none";
         document.getElementById('fakeCall').style.display = "flex";
-        
-        // Vibration pattern for the incoming call
-        vibrationLoop = setInterval(() => { 
-            if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200]); 
-        }, 1400); 
-
-        const r = document.getElementById('ringtone');
-        r.play().catch(e => console.log("Audio play blocked", e));
+        vibrationLoop = setInterval(() => { if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200]); }, 1400); 
+        document.getElementById('ringtone').play().catch(() => {});
     }
 
     function disarm() {
         state = "idle";
-        clearTimeout(armingTimer);
-        clearTimeout(callTimer);
-        clearInterval(vibrationLoop);
-        clearTimeout(pressTimer);
+        if (armingTimer) clearTimeout(armingTimer);
+        if (callTimer) clearTimeout(callTimer);
+        if (vibrationLoop) clearInterval(vibrationLoop);
+        if (pressTimer) clearTimeout(pressTimer);
         pressTimer = null;
-        
         cleanupListeners();
-        
         if (wakeLock) { wakeLock.release(); wakeLock = null; }
-        
         document.getElementById('darkOverlay').style.display = "none";
         document.getElementById('fakeCall').style.display = "none";
         document.getElementById('syncBtn').innerText = "Sync";
         document.getElementById('status').innerText = "System: Idle";
-        
         if (navigator.vibrate) navigator.vibrate(0);
         const r = document.getElementById('ringtone');
-        r.pause(); 
-        r.currentTime = 0;
+        r.pause(); r.currentTime = 0;
     }
 
     function cleanupListeners() {
@@ -212,12 +197,8 @@
     function handleRotation(event) {
         if (state !== "armed" || event.beta == null) return;
         if (lastBeta === null) { lastBeta = event.beta; return; }
-        
         let delta = Math.abs(event.beta - lastBeta);
-        // Trigger if phone is flipped or rotated significantly
-        if (delta > 45 && delta < 300) {
-            triggerEvent('rotation');
-        }
+        if (delta > 45 && delta < 300) triggerEvent('rotation');
         lastBeta = event.beta;
     }
 
@@ -225,12 +206,8 @@
         if (state !== "armed") return;
         const acc = event.accelerationIncludingGravity;
         if (!acc) return;
-        
         const mag = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
-        // Compare current gravity magnitude to standard 9.8m/s^2
-        if (Math.abs(mag - 9.8) > shakeThreshold) {
-            triggerEvent('shake');
-        }
+        if (Math.abs(mag - 9.8) > shakeThreshold) triggerEvent('shake');
     }
 </script>
 </body>
