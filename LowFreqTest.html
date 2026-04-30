@@ -2,35 +2,84 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Tactile Precision Lab</title>
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; display: flex; flex-direction: column; align-items: center; padding: 15px; }
-        .control-panel { background: #111; border: 1px solid #333; padding: 20px; border-radius: 8px; width: 320px; }
-        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 10px; }
-        .label-box { flex-grow: 1; }
-        .val-display { font-size: 20px; color: #fff; font-weight: bold; }
-        .btn-group { display: flex; gap: 10px; }
-        .adj-btn { background: #333; color: white; border: 1px solid #555; width: 45px; height: 45px; border-radius: 5px; font-size: 24px; cursor: pointer; }
+        /* Ensuring nothing bleeds off screen */
+        * { box-sizing: border-box; }
+        body { 
+            background: #000; 
+            color: #0f0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 10px;
+            margin: 0;
+            overflow-x: hidden;
+        }
+        .control-panel { 
+            background: #111; 
+            border: 1px solid #333; 
+            padding: 15px; 
+            border-radius: 12px; 
+            width: 100%; 
+            max-width: 350px; 
+        }
+        .row { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 15px; 
+            border-bottom: 1px solid #222; 
+            padding-bottom: 10px; 
+        }
+        .label-box { flex: 1; padding-right: 5px; }
+        .label-text { font-size: 14px; font-weight: bold; color: #0f0; }
+        .val-display { font-size: 22px; color: #fff; font-weight: bold; min-width: 60px; text-align: center; }
+        .btn-group { display: flex; gap: 8px; }
+        .adj-btn { 
+            background: #333; 
+            color: white; 
+            border: 1px solid #555; 
+            width: 44px; 
+            height: 44px; 
+            border-radius: 8px; 
+            font-size: 20px; 
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
         .adj-btn:active { background: #555; }
-        .main-btn { width: 100%; padding: 20px; margin-top: 10px; border-radius: 8px; border: none; font-weight: bold; font-size: 18px; cursor: pointer; }
+        .main-btn { 
+            width: 100%; 
+            padding: 18px; 
+            margin-top: 10px; 
+            border-radius: 10px; 
+            border: none; 
+            font-weight: bold; 
+            font-size: 16px; 
+            cursor: pointer; 
+        }
         .pulse-btn { background: #0055ff; color: white; }
         .loop-btn { background: #222; color: #888; border: 1px solid #444; }
         .loop-active { background: #aa0000; color: white; border-color: #ff0000; }
-        .init-btn { background: #fff; color: #000; margin-bottom: 20px; }
-        .desc { font-size: 11px; color: #666; margin-top: 4px; }
+        .init-btn { background: #fff; color: #000; margin-bottom: 15px; z-index: 100; }
+        .desc { font-size: 11px; color: #666; margin-top: 2px; line-height: 1.2; }
     </style>
 </head>
 <body>
 
-    <button class="main-btn init-btn" id="initBtn" onclick="initAudio()">INITIALIZE SYSTEM</button>
+    <h2 style="margin-bottom: 10px;">Tactile Lab v3.1</h2>
+    
+    <button class="main-btn init-btn" id="initBtn" onclick="initAudio()">STEP 1: INITIALIZE AUDIO</button>
 
     <div class="control-panel">
-        <!-- Frequency Control -->
         <div class="row">
             <div class="label-box">
-                <div>FREQ (Hz)</div>
-                <div class="desc">Lower = stealthier</div>
+                <div class="label-text">FREQ (Hz)</div>
+                <div class="desc">Try 30-50Hz</div>
             </div>
             <div class="val-display" id="freqV">40</div>
             <div class="btn-group">
@@ -39,11 +88,10 @@
             </div>
         </div>
 
-        <!-- Duration Control -->
         <div class="row">
             <div class="label-box">
-                <div>DUR (ms)</div>
-                <div class="desc">Length of thump</div>
+                <div class="label-text">DUR (ms)</div>
+                <div class="desc">Thump length</div>
             </div>
             <div class="val-display" id="durV">300</div>
             <div class="btn-group">
@@ -52,11 +100,10 @@
             </div>
         </div>
 
-        <!-- Attack Control -->
-        <div class="row">
+        <div class="row" style="border:none;">
             <div class="label-box">
-                <div>ATTACK (ms)</div>
-                <div class="desc">Lower = sharper</div>
+                <div class="label-text">ATTACK (ms)</div>
+                <div class="desc">Sharpness</div>
             </div>
             <div class="val-display" id="attV">20</div>
             <div class="btn-group">
@@ -75,22 +122,24 @@
 
         function adj(key, delta) {
             config[key] += delta;
-            // Boundaries
             if (config.freq < 20) config.freq = 20;
             if (config.dur < 50) config.dur = 50;
             if (config.att < 1) config.att = 1;
             if (config.att > config.dur) config.att = config.dur;
-            
             document.getElementById(key + 'V').innerText = config[key];
         }
 
         function initAudio() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            document.getElementById('initBtn').style.display = 'none';
+            document.getElementById('initBtn').style.opacity = '0.3';
+            document.getElementById('initBtn').innerText = 'AUDIO SYSTEM READY';
         }
 
         function pulse() {
-            if (!audioCtx) return;
+            if (!audioCtx) {
+                alert("Tap INITIALIZE first!");
+                return;
+            }
             
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
@@ -98,7 +147,6 @@
             osc.type = 'sine';
             osc.frequency.setValueAtTime(config.freq, audioCtx.currentTime);
 
-            // Convert ms to seconds for Web Audio API
             const d = config.dur / 1000;
             const a = config.att / 1000;
 
@@ -121,6 +169,7 @@
                 btn.innerText = "LOOP: OFF";
                 btn.classList.remove('loop-active');
             } else {
+                if (!audioCtx) { alert("Tap INITIALIZE first!"); return; }
                 pulse();
                 loopID = setInterval(pulse, 1000);
                 btn.innerText = "LOOP: ON";
