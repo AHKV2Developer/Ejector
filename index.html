@@ -141,6 +141,20 @@
     });
     btn.addEventListener('pointerup', (e) => {
         if (state === "idle" && pressTimer !== null) {
+            // 1. UNLOCK AUDIO (Play and immediately pause)
+            const r = document.getElementById('ringtone');
+            r.play().then(() => {
+                r.pause();
+                r.currentTime = 0;
+            }).catch(err => {
+                console.log("Audio unlock failed:", err);
+            });
+
+            // 2. UNLOCK VIBRATION (A tiny 10ms pulse)
+            if (navigator.vibrate) {
+                navigator.vibrate(10);
+            }
+
             const buffer = (pressTimer === "long") ? 5000 : 15000;
             clearTimeout(pressTimer);
             pressTimer = null;
