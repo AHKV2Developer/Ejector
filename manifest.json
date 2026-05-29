@@ -1,6 +1,6 @@
 {
   "name": "Trigger Call",
-  "short_name": "Call",
+  "short_name": "Ejector",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#000000",
