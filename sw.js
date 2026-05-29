@@ -2,7 +2,7 @@ const CACHE_NAME = 'heating-control-v2';
 const ASSETS = [
   './',
   './index.html', // Ensure this matches your actual filename
-  './Ejector_Icon.png'
+  './Ejector_Icon_2.png'
   './manifest.json'
 ];
 
