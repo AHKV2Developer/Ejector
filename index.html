@@ -94,7 +94,7 @@
     let shakeSeconds = parseInt(localStorage.getItem('shakeSeconds')) || 90;
     let shakeThreshold = parseInt(localStorage.getItem('shakeThreshold')) || 10;
     let vibrationIntensity = parseInt(localStorage.getItem('vibrationIntensity')) || 75;
-    let stealthMode = localStorage.getItem('stealthMode') !== 'false'; 
+    let stealthMode = localStorage.getItem('stealthMode') === null ? true : localStorage.getItem('stealthMode') === 'true';
 
     let armingTimer = null, callTimer = null, pressTimer = null, vibrationLoop = null, wakeLock = null, countdownInterval = null;
     let baseAcc = { x: null, y: null, z: null };
@@ -114,11 +114,11 @@
             rotationSeconds = 10;
             shakeSeconds = 10;
         } else {
-            rotationSeconds = 90;
-            shakeSeconds = 90;
+            rotationSeconds = parseInt(localStorage.getItem('rotationSeconds')) || 90;
+            shakeSeconds = parseInt(localStorage.getItem('shakeSeconds')) || 90;
         }
-        localStorage.setItem('rotationSeconds', rotationSeconds);
-        localStorage.setItem('shakeSeconds', shakeSeconds);
+        //localStorage.setItem('rotationSeconds', rotationSeconds);
+        //localStorage.setItem('shakeSeconds', shakeSeconds);
         localStorage.setItem('stealthMode', stealthMode);
         refreshUI();
     }
